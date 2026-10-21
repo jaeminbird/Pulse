@@ -1,122 +1,125 @@
 <div class="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
   <div class="max-w-7xl mx-auto">
     <!-- Header -->
-    <div class="mb-8">
-      <h1 class="text-4xl font-bold text-gray-900 mb-2">
-        CI/CD Pipeline Dashboard
-      </h1>
-      <p class="text-gray-600">
-        Monitor your repositories and build statuses in real-time
-      </p>
-    </div>
+    <header class="mb-8 flex flex-wrap items-end justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <img src="favicon.svg" alt="" class="w-10 h-10">
+        <div>
+          <h1 class="text-3xl font-bold text-gray-900">Pulse</h1>
+          <p class="text-gray-600">GitHub Actions status across your repositories</p>
+        </div>
+      </div>
+      <div class="text-sm text-gray-500" *ngIf="lastUpdated">
+        Updated {{ lastUpdated | date: 'mediumTime' }}
+        <span *ngIf="autoRefresh"> &middot; refreshing every {{ refreshInterval / 1000 }}s</span>
+      </div>
+    </header>
 
     <!-- Control Panel -->
-    <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+    <section class="bg-white rounded-lg shadow-md p-6 mb-6">
       <div class="flex flex-wrap items-center justify-between gap-4">
-        <!-- Status counts -->
-        <div class="flex items-center gap-6">
-          <div class="text-center">
-            <div class="text-2xl font-bold text-gray-900">{{ getStatusCounts().total }}</div>
-            <div class="text-sm text-gray-600">Total</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-build-success">{{ getStatusCounts().success }}</div>
-            <div class="text-sm text-gray-600">Success</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-build-failure">{{ getStatusCounts().failed }}</div>
-            <div class="text-sm text-gray-600">Failed</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-build-progress">{{ getStatusCounts().inProgress }}</div>
-            <div class="text-sm text-gray-600">Running</div>
-          </div>
-          <div class="text-center">
-            <div class="text-2xl font-bold text-build-pending">{{ getStatusCounts().pending }}</div>
-            <div class="text-sm text-gray-600">Pending</div>
-          </div>
+        <!-- Status counts (click to filter) -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" class="stat" [class.stat-active]="statusFilter === 'ALL'" (click)="setFilter('ALL')">
+            <span class="text-2xl font-bold text-gray-900">{{ statusCounts.total }}</span>
+            <span class="text-sm text-gray-600">Total</span>
+          </button>
+          <button type="button" class="stat" [class.stat-active]="statusFilter === 'SUCCESS'" (click)="setFilter('SUCCESS')">
+            <span class="text-2xl font-bold text-build-success">{{ statusCounts.success }}</span>
+            <span class="text-sm text-gray-600">Passing</span>
+          </button>
+          <button type="button" class="stat" [class.stat-active]="statusFilter === 'FAILED'" (click)="setFilter('FAILED')">
+            <span class="text-2xl font-bold text-build-failure">{{ statusCounts.failed }}</span>
+            <span class="text-sm text-gray-600">Failing</span>
+          </button>
+          <button type="button" class="stat" [class.stat-active]="statusFilter === 'IN_PROGRESS'" (click)="setFilter('IN_PROGRESS')">
+            <span class="text-2xl font-bold text-build-progress">{{ statusCounts.inProgress }}</span>
+            <span class="text-sm text-gray-600">Running</span>
+          </button>
+          <button type="button" class="stat" [class.stat-active]="statusFilter === 'PENDING'" (click)="setFilter('PENDING')">
+            <span class="text-2xl font-bold text-build-pending">{{ statusCounts.pending }}</span>
+            <span class="text-sm text-gray-600">Queued</span>
+          </button>
         </div>
 
         <!-- Actions -->
-        <div class="flex items-center gap-3">
-          <button
-            (click)="manualRefresh()"
-            [disabled]="loading"
-            class="btn-primary flex items-center gap-2"
-            [class.opacity-50]="loading">
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="button" (click)="refresh()" [disabled]="loading" class="btn-primary flex items-center gap-2 disabled:opacity-50">
             <svg class="w-4 h-4" [class.animate-spin]="loading" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             Refresh
           </button>
 
-          <button
-            (click)="triggerSync()"
-            class="btn-secondary flex items-center gap-2">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button type="button" (click)="syncAll()" [disabled]="syncing || repositories.length === 0" class="btn-secondary flex items-center gap-2 disabled:opacity-50">
+            <svg class="w-4 h-4" [class.animate-bounce]="syncing" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
             </svg>
-            Sync from GitHub
+            {{ syncing ? 'Syncing…' : 'Sync all from GitHub' }}
           </button>
 
-          <button
-            (click)="toggleAutoRefresh()"
-            [class.bg-blue-600]="autoRefresh"
-            [class.bg-gray-300]="!autoRefresh"
-            class="px-4 py-2 rounded-md text-white transition-colors duration-200">
+          <button type="button" (click)="toggleAutoRefresh()"
+                  [class.bg-blue-600]="autoRefresh" [class.bg-gray-400]="!autoRefresh"
+                  class="px-4 py-2 rounded-md text-white transition-colors duration-200">
             Auto-refresh: {{ autoRefresh ? 'ON' : 'OFF' }}
           </button>
         </div>
       </div>
 
-      <!-- Last updated -->
-      <div class="mt-4 pt-4 border-t border-gray-200 text-sm text-gray-600">
-        Last updated: {{ formatTime(lastUpdated) }}
-      </div>
+      <!-- Add repository -->
+      <form class="mt-6 pt-6 border-t border-gray-200 flex flex-wrap gap-3" (ngSubmit)="addRepository()">
+        <label for="repo-url" class="sr-only">GitHub repository</label>
+        <input id="repo-url" name="repoUrl" type="text" [(ngModel)]="newRepoUrl" [disabled]="adding"
+               placeholder="Add a repository: owner/repo or https://github.com/owner/repo"
+               class="flex-1 min-w-[16rem] rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <button type="submit" class="btn-primary disabled:opacity-50" [disabled]="adding || !newRepoUrl.trim()">
+          {{ adding ? 'Adding…' : 'Add repository' }}
+        </button>
+      </form>
+      <p *ngIf="addError" class="mt-2 text-sm text-red-600">{{ addError }}</p>
+    </section>
+
+    <!-- Notice -->
+    <div *ngIf="notice" class="mb-6 rounded-md bg-green-50 border-l-4 border-green-500 p-4 text-sm text-green-800">
+      {{ notice }}
+    </div>
+
+    <!-- Error state -->
+    <div *ngIf="error" class="mb-6 rounded-md bg-red-50 border-l-4 border-red-500 p-4 flex items-start justify-between gap-4">
+      <p class="text-sm text-red-700">{{ error }}</p>
+      <button type="button" class="text-red-500 hover:text-red-700 text-sm" (click)="error = null" aria-label="Dismiss">✕</button>
     </div>
 
     <!-- Loading state -->
-    <div *ngIf="loading && repositories.length === 0" class="text-center py-12">
+    <div *ngIf="loading && !lastUpdated" class="text-center py-12">
       <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-blue-600 border-t-transparent"></div>
       <p class="mt-4 text-gray-600">Loading repositories...</p>
     </div>
 
-    <!-- Error state -->
-    <div *ngIf="error" class="bg-red-50 border-l-4 border-red-500 p-4 mb-8">
-      <div class="flex">
-        <div class="flex-shrink-0">
-          <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
-            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
-          </svg>
-        </div>
-        <div class="ml-3">
-          <p class="text-sm text-red-700">{{ error }}</p>
-        </div>
-      </div>
-    </div>
-
     <!-- Empty state -->
-    <div *ngIf="!loading && repositories.length === 0 && !error" class="text-center py-12">
+    <div *ngIf="lastUpdated && repositories.length === 0" class="text-center py-12">
       <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
       </svg>
-      <h3 class="mt-2 text-sm font-medium text-gray-900">No repositories</h3>
+      <h3 class="mt-2 text-sm font-medium text-gray-900">No repositories yet</h3>
       <p class="mt-1 text-sm text-gray-500">
-        Get started by adding a repository to the backend.
+        Add a GitHub repository above (for example <code class="bg-gray-100 px-1 rounded">angular/angular</code>) to start tracking its builds.
       </p>
-      <div class="mt-6">
-        <code class="bg-gray-100 px-4 py-2 rounded text-sm">
-          POST /api/repositories
-        </code>
-      </div>
+    </div>
+
+    <!-- Filtered to nothing -->
+    <div *ngIf="repositories.length > 0 && filteredRepositories.length === 0" class="text-center py-12 text-gray-500">
+      No repositories match this filter.
+      <button type="button" class="text-blue-600 hover:underline" (click)="setFilter('ALL')">Show all</button>
     </div>
 
     <!-- Repository Grid -->
-    <div *ngIf="repositories.length > 0"
-         class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div *ngIf="filteredRepositories.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <app-repository-card
-        *ngFor="let repo of repositories"
-        [data]="repo">
+        *ngFor="let repo of filteredRepositories; trackBy: trackById"
+        [data]="repo"
+        (sync)="syncRepository(repo)"
+        (remove)="removeRepository(repo)">
       </app-repository-card>
     </div>
   </div>

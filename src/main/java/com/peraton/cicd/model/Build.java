@@ -2,14 +2,16 @@ package com.peraton.cicd.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "builds")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class Build {
@@ -34,6 +36,23 @@ public class Build {
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    @Column(name = "github_run_id", unique = true)
+    private Long githubRunId;
+
+    @Column(name = "workflow_name")
+    private String workflowName;
+
+    private String branch;
+
+    @Column(name = "commit_message", length = 1000)
+    private String commitMessage;
+
+    @Column(name = "author_name")
+    private String authorName;
+
+    @Column(name = "html_url", length = 500)
+    private String htmlUrl;
 
     @PrePersist
     protected void onCreate() {

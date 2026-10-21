@@ -1,6 +1,6 @@
-import { Component, Input } from '@angular/core';
+import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RepositoryWithLatestBuild, BuildStatus } from '../../models/repository.model';
+import { Build, BuildStatus, RepositoryWithLatestBuild } from '../../models/repository.model';
 
 @Component({
   selector: 'app-repository-card',
@@ -11,6 +11,8 @@ import { RepositoryWithLatestBuild, BuildStatus } from '../../models/repository.
 })
 export class RepositoryCardComponent {
   @Input() data!: RepositoryWithLatestBuild;
+  @Output() sync = new EventEmitter<void>();
+  @Output() remove = new EventEmitter<void>();
 
   getStatusColor(status?: BuildStatus): string {
     if (!status) return 'bg-gray-400';
@@ -28,7 +30,16 @@ export class RepositoryCardComponent {
 
   getStatusText(status?: BuildStatus): string {
     if (!status) return 'No builds';
-    return status.replace('_', ' ');
+
+    const labels: Record<BuildStatus, string> = {
+      'SUCCESS': 'Passing',
+      'FAILED': 'Failing',
+      'PENDING': 'Queued',
+      'IN_PROGRESS': 'Running',
+      'CANCELLED': 'Cancelled'
+    };
+
+    return labels[status] || status;
   }
 
   getStatusIcon(status?: BuildStatus): string {
@@ -49,13 +60,16 @@ export class RepositoryCardComponent {
     return status === 'IN_PROGRESS';
   }
 
+  /** Oldest first, so the strip reads left-to-right like a timeline. */
+  get history(): Build[] {
+    return [...(this.data.recentBuilds ?? [])].reverse();
+  }
+
   formatDate(dateString?: string): string {
-    if (!dateString) return 'N/A';
+    const date = parseUtc(dateString);
+    if (!date) return 'N/A';
 
-    const date = new Date(dateString);
-    const now = new Date();
-    const diff = now.getTime() - date.getTime();
-
+    const diff = Date.now() - date.getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
@@ -68,14 +82,33 @@ export class RepositoryCardComponent {
     return date.toLocaleDateString();
   }
 
+  formatDuration(build: Build): string | null {
+    const start = parseUtc(build.startedAt);
+    const end = parseUtc(build.completedAt);
+    if (!start || !end) return null;
+
+    const seconds = Math.max(0, Math.round((end.getTime() - start.getTime()) / 1000));
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+
+  tooltip(build: Build): string {
+    const parts = [this.getStatusText(build.status), build.workflowName, build.branch, this.formatDate(build.startedAt)];
+    return parts.filter(Boolean).join(' · ');
+  }
+
   getShortCommitSha(sha?: string): string {
     if (!sha) return 'N/A';
     return sha.substring(0, 7);
   }
+}
 
-  openGitHub(): void {
-    if (this.data.repository.githubUrl) {
-      window.open(this.data.repository.githubUrl, '_blank');
-    }
-  }
+/** The API sends UTC timestamps without a zone suffix; read them as UTC rather than local time. */
+function parseUtc(value?: string): Date | null {
+  if (!value) return null;
+  const hasZone = /([zZ]|[+-]\d{2}:?\d{2})$/.test(value);
+  const date = new Date(hasZone ? value : `${value}Z`);
+  return isNaN(date.getTime()) ? null : date;
 }

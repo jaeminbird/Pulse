@@ -1,4 +1,5 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:8080/api'
+  // Relative so it works behind the dev-server proxy (proxy.conf.json) and nginx in Docker
+  apiUrl: '/api'
 };

@@ -27,7 +27,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleIllegalArgumentException(
             IllegalArgumentException ex,
             HttpServletRequest request) {
-        log.error("IllegalArgumentException: {}", ex.getMessage());
+        log.warn("IllegalArgumentException: {}", ex.getMessage());
 
         ErrorResponse errorResponse = ErrorResponse.of(
                 HttpStatus.BAD_REQUEST.value(),
@@ -72,7 +72,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleValidationException(
             MethodArgumentNotValidException ex,
             HttpServletRequest request) {
-        log.error("Validation error: {}", ex.getMessage());
+        log.warn("Validation error: {}", ex.getMessage());
 
         List<String> details = ex.getBindingResult()
                 .getAllErrors()
@@ -105,7 +105,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleTypeMismatchException(
             MethodArgumentTypeMismatchException ex,
             HttpServletRequest request) {
-        log.error("Type mismatch error: {}", ex.getMessage());
+        log.warn("Type mismatch error: {}", ex.getMessage());
 
         String message = String.format(
                 "Invalid value '%s' for parameter '%s'. Expected type: %s",
@@ -132,7 +132,7 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleResourceNotFoundException(
             ResourceNotFoundException ex,
             HttpServletRequest request) {
-        log.error("Resource not found: {}", ex.getMessage());
+        log.warn("Resource not found: {}", ex.getMessage());
 
         ErrorResponse errorResponse = ErrorResponse.of(
                 HttpStatus.NOT_FOUND.value(),

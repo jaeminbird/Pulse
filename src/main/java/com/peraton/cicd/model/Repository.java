@@ -2,7 +2,8 @@ package com.peraton.cicd.model;
 
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
@@ -11,7 +12,8 @@ import java.util.List;
 
 @Entity
 @Table(name = "repositories")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 public class Repository {
@@ -23,7 +25,7 @@ public class Repository {
     @Column(nullable = false, unique = true)
     private String name;
 
-    @Column(name = "github_url", nullable = false)
+    @Column(name = "github_url", nullable = false, length = 500)
     private String githubUrl;
 
     @Column(name = "created_at", nullable = false, updatable = false)

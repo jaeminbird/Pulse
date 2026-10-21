@@ -6,18 +6,20 @@ import com.peraton.cicd.model.Repository;
 import com.peraton.cicd.repository.RepositoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
-@ConditionalOnProperty(prefix = "scheduler", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class ScheduledTasksService {
+
+    // Guards against a manual trigger overlapping a scheduled run
+    private final ReentrantLock syncLock = new ReentrantLock();
 
     private final GitHubActionsService gitHubActionsService;
     private final RepositoryRepository repositoryRepository;
@@ -31,6 +33,14 @@ public class ScheduledTasksService {
     public void syncGitHubBuildsScheduled() {
         if (!schedulingConfig.isEnabled()) {
             log.debug("Scheduler is disabled, skipping GitHub sync");
+            return;
+        }
+        runSync();
+    }
+
+    private void runSync() {
+        if (!syncLock.tryLock()) {
+            log.info("A GitHub sync is already running, skipping");
             return;
         }
 
@@ -47,7 +57,6 @@ public class ScheduledTasksService {
             List<SchedulingConfig.MonitoredRepository> configuredRepos = schedulingConfig.getRepositories();
 
             if (configuredRepos.isEmpty()) {
-                log.warn("No repositories configured for scheduled sync. Add repositories in application.yml under 'scheduler.repositories'");
                 syncAllRepositories();
                 return;
             }
@@ -99,6 +108,7 @@ public class ScheduledTasksService {
             log.info("Successful repositories: {}", successCount);
             log.info("Failed repositories: {}", failureCount);
             log.info("========================================");
+            syncLock.unlock();
         }
     }
 
@@ -121,15 +131,9 @@ public class ScheduledTasksService {
 
         for (Repository repository : allRepositories) {
             try {
-                // Extract owner and repo from GitHub URL
-                String[] parts = extractOwnerAndRepo(repository.getGithubUrl());
-                if (parts == null) {
-                    log.warn("Could not extract owner/repo from URL: {}", repository.getGithubUrl());
-                    continue;
-                }
-
-                String owner = parts[0];
-                String repo = parts[1];
+                GitHubRepoRef ref = GitHubRepoRef.parse(repository.getGithubUrl());
+                String owner = ref.owner();
+                String repo = ref.repo();
 
                 log.info("Syncing repository: {}/{} (ID: {})", owner, repo, repository.getId());
 
@@ -155,39 +159,10 @@ public class ScheduledTasksService {
     }
 
     /**
-     * Extract owner and repo name from GitHub URL
-     * Examples:
-     * - https://github.com/owner/repo -> [owner, repo]
-     * - https://github.com/owner/repo.git -> [owner, repo]
-     */
-    private String[] extractOwnerAndRepo(String githubUrl) {
-        if (githubUrl == null || githubUrl.isEmpty()) {
-            return null;
-        }
-
-        try {
-            // Remove .git suffix if present
-            String url = githubUrl.replaceAll("\\.git$", "");
-
-            // Extract from URL
-            String[] urlParts = url.split("/");
-            if (urlParts.length >= 2) {
-                String owner = urlParts[urlParts.length - 2];
-                String repo = urlParts[urlParts.length - 1];
-                return new String[]{owner, repo};
-            }
-        } catch (Exception e) {
-            log.error("Error parsing GitHub URL: {}", githubUrl, e);
-        }
-
-        return null;
-    }
-
-    /**
-     * Manual trigger method for testing purposes
+     * Run a sync immediately, even if scheduled syncing is disabled.
      */
     public void triggerManualSync() {
         log.info("Manual sync triggered");
-        syncGitHubBuildsScheduled();
+        runSync();
     }
 }

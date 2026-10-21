@@ -9,5 +9,5 @@ import { DashboardComponent } from './components/dashboard/dashboard.component';
   styles: []
 })
 export class AppComponent {
-  title = 'CI/CD Pipeline Dashboard';
+  title = 'Pulse';
 }

@@ -341,6 +341,39 @@ Delete a build.
 }
 ```
 
+`githubUrl` may also be `owner/repo` shorthand, and `name` is optional (defaults to `owner/repo`). Workflow runs are synced right away. Returns `400` if the repository is already monitored or doesn't exist on GitHub.
+
+### Get Dashboard Summary
+
+**Endpoint:** `GET /api/repositories/summary`
+
+Returns every repository with its latest build, its last 10 builds (newest first), and the success rate across the finished ones.
+
+```json
+[
+  {
+    "repository": { "id": 1, "name": "angular/angular-cli", "githubUrl": "https://github.com/angular/angular-cli", "createdAt": "2026-10-21T20:59:55" },
+    "latestBuild": { "id": 12, "status": "IN_PROGRESS", "workflowName": "CI", "branch": "main", "commitSha": "3db6585...", "commitMessage": "build: update dependencies", "authorName": "Angular Robot", "htmlUrl": "https://github.com/angular/angular-cli/actions/runs/39674381174", "startedAt": "2026-10-21T20:54:44", "completedAt": null },
+    "recentBuilds": [ "..." ],
+    "successRate": 89
+  }
+]
+```
+
+All timestamps are UTC.
+
+### Sync One Repository
+
+**Endpoint:** `POST /api/repositories/{id}/sync`
+
+**Response:** `200 OK` with a `SyncResponse` (`syncedCount` = builds created or updated).
+
+### Delete Repository
+
+**Endpoint:** `DELETE /api/repositories/{id}`
+
+Stops monitoring the repository and deletes its builds. **Response:** `204 No Content`
+
 ---
 
 ## Pipeline Management

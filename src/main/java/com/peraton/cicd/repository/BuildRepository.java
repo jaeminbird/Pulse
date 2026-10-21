@@ -19,7 +19,9 @@ public interface BuildRepository extends JpaRepository<Build, Long> {
 
     List<Build> findByStatus(Build.BuildStatus status);
 
-    Optional<Build> findByCommitSha(String commitSha);
+    Optional<Build> findByGithubRunId(Long githubRunId);
+
+    List<Build> findTop10ByRepositoryIdOrderByStartedAtDesc(Long repositoryId);
 
     @Query("SELECT b FROM Build b WHERE b.repository.id = :repositoryId ORDER BY b.startedAt DESC")
     List<Build> findByRepositoryIdOrderByStartedAtDesc(@Param("repositoryId") Long repositoryId);

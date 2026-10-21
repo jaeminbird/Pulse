@@ -12,18 +12,11 @@ import java.time.Duration;
 public class RestTemplateConfig {
 
     @Bean
-    public RestTemplate restTemplate(RestTemplateBuilder builder) {
+    public RestTemplate githubRestTemplate(RestTemplateBuilder builder, GitHubApiConfig gitHubApiConfig) {
+        Duration timeout = Duration.ofMillis(gitHubApiConfig.getTimeout());
         return builder
-                .setConnectTimeout(Duration.ofSeconds(10))
-                .setReadTimeout(Duration.ofSeconds(10))
-                .build();
-    }
-
-    @Bean
-    public RestTemplate githubRestTemplate(RestTemplateBuilder builder) {
-        return builder
-                .setConnectTimeout(Duration.ofSeconds(10))
-                .setReadTimeout(Duration.ofSeconds(10))
+                .setConnectTimeout(timeout)
+                .setReadTimeout(timeout)
                 .additionalInterceptors(githubApiInterceptor())
                 .build();
     }

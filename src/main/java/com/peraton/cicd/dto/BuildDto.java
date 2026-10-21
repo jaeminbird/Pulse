@@ -21,6 +21,12 @@ public class BuildDto {
     private String commitSha;
     private LocalDateTime startedAt;
     private LocalDateTime completedAt;
+    private Long githubRunId;
+    private String workflowName;
+    private String branch;
+    private String commitMessage;
+    private String authorName;
+    private String htmlUrl;
 
     public static BuildDto fromEntity(Build build) {
         return BuildDto.builder()
@@ -31,6 +37,12 @@ public class BuildDto {
                 .commitSha(build.getCommitSha())
                 .startedAt(build.getStartedAt())
                 .completedAt(build.getCompletedAt())
+                .githubRunId(build.getGithubRunId())
+                .workflowName(build.getWorkflowName())
+                .branch(build.getBranch())
+                .commitMessage(build.getCommitMessage())
+                .authorName(build.getAuthorName())
+                .htmlUrl(build.getHtmlUrl())
                 .build();
     }
 
@@ -40,6 +52,11 @@ public class BuildDto {
         build.setCommitSha(this.commitSha);
         build.setStartedAt(this.startedAt);
         build.setCompletedAt(this.completedAt);
+        build.setWorkflowName(this.workflowName);
+        build.setBranch(this.branch);
+        build.setCommitMessage(this.commitMessage);
+        build.setAuthorName(this.authorName);
+        build.setHtmlUrl(this.htmlUrl);
 
         if (this.status != null) {
             build.setStatus(Build.BuildStatus.valueOf(this.status));

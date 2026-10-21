@@ -176,7 +176,6 @@ postgres-data/
 
 ### Docker ###
 docker-compose.override.yml
-.dockerignore
 
 ### Secrets & Credentials ###
 secrets/

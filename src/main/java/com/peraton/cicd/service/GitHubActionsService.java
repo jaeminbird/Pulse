@@ -4,6 +4,7 @@ import com.peraton.cicd.dto.github.BuildStatusDto;
 import com.peraton.cicd.dto.github.WorkflowRun;
 import com.peraton.cicd.dto.github.WorkflowRunsResponse;
 import com.peraton.cicd.exception.GitHubApiException;
+import com.peraton.cicd.exception.ResourceNotFoundException;
 import com.peraton.cicd.model.Build;
 import com.peraton.cicd.model.Repository;
 import com.peraton.cicd.repository.BuildRepository;
@@ -13,8 +14,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,7 +43,7 @@ public class GitHubActionsService {
 
         if (response.getWorkflowRuns() == null || response.getWorkflowRuns().isEmpty()) {
             log.warn("No workflow runs found for {}/{}", owner, repo);
-            throw new GitHubApiException("No workflow runs found for repository");
+            throw new ResourceNotFoundException("No workflow runs found for " + owner + "/" + repo);
         }
 
         WorkflowRun latestRun = response.getWorkflowRuns().get(0);
@@ -64,7 +66,7 @@ public class GitHubActionsService {
 
         if (response.getWorkflowRuns() == null || response.getWorkflowRuns().isEmpty()) {
             log.warn("No workflow runs found for {}/{} on branch {}", owner, repo, branch);
-            throw new GitHubApiException("No workflow runs found for repository and branch");
+            throw new ResourceNotFoundException("No workflow runs found for " + owner + "/" + repo + " on branch " + branch);
         }
 
         WorkflowRun latestRun = response.getWorkflowRuns().get(0);
@@ -119,23 +121,22 @@ public class GitHubActionsService {
     }
 
     /**
-     * Sync workflow runs to database for a repository
+     * Sync recent workflow runs into the database for a repository.
+     * New runs are inserted; runs already stored are updated so that
+     * queued/in-progress builds pick up their final status.
      *
      * @param owner Repository owner
      * @param repo Repository name
      * @param repositoryId Local repository ID in database
-     * @return Number of builds synced
+     * @return Number of builds created or changed
      */
     @Transactional
     public int syncWorkflowRunsToDatabase(String owner, String repo, Long repositoryId) {
         log.info("Syncing workflow runs for {}/{} to database", owner, repo);
 
-        Optional<Repository> repositoryOpt = repositoryRepository.findById(repositoryId);
-        if (repositoryOpt.isEmpty()) {
-            throw new IllegalArgumentException("Repository not found with ID: " + repositoryId);
-        }
+        Repository repository = repositoryRepository.findById(repositoryId)
+                .orElseThrow(() -> new IllegalArgumentException("Repository not found with ID: " + repositoryId));
 
-        Repository repository = repositoryOpt.get();
         WorkflowRunsResponse response = gitHubApiClient.getWorkflowRuns(owner, repo, null, null, 50);
 
         if (response.getWorkflowRuns() == null) {
@@ -144,23 +145,68 @@ public class GitHubActionsService {
 
         int syncedCount = 0;
         for (WorkflowRun run : response.getWorkflowRuns()) {
-            // Check if build already exists
-            Optional<Build> existingBuild = buildRepository.findByCommitSha(run.getHeadSha());
-            if (existingBuild.isEmpty()) {
-                Build build = new Build();
-                build.setRepository(repository);
-                build.setCommitSha(run.getHeadSha());
-                build.setStatus(mapGitHubStatusToBuildStatus(run.getStatus(), run.getConclusion()));
-                build.setStartedAt(run.getRunStartedAt());
-                build.setCompletedAt(run.getUpdatedAt());
-
-                buildRepository.save(build);
-                syncedCount++;
+            if (run.getId() == null || run.getHeadSha() == null) {
+                continue;
             }
+
+            Build build = buildRepository.findByGithubRunId(run.getId()).orElse(null);
+            if (build == null) {
+                build = new Build();
+                build.setGithubRunId(run.getId());
+                build.setRepository(repository);
+            } else if (!build.getRepository().getId().equals(repositoryId)) {
+                log.warn("Workflow run {} already belongs to repository {}, skipping",
+                        run.getId(), build.getRepository().getId());
+                continue;
+            } else if (!hasChanged(build, run)) {
+                continue;
+            }
+
+            applyRun(build, run);
+            buildRepository.save(build);
+            syncedCount++;
         }
 
-        log.info("Synced {} new builds to database", syncedCount);
+        log.info("Synced {} new or updated builds to database", syncedCount);
         return syncedCount;
+    }
+
+    private boolean hasChanged(Build build, WorkflowRun run) {
+        return build.getStatus() != mapGitHubStatusToBuildStatus(run.getStatus(), run.getConclusion())
+                || !Objects.equals(build.getCompletedAt(), completedAt(run));
+    }
+
+    private void applyRun(Build build, WorkflowRun run) {
+        build.setCommitSha(run.getHeadSha());
+        build.setStatus(mapGitHubStatusToBuildStatus(run.getStatus(), run.getConclusion()));
+        build.setStartedAt(run.getRunStartedAt() != null ? run.getRunStartedAt() : run.getCreatedAt());
+        build.setCompletedAt(completedAt(run));
+        build.setWorkflowName(truncate(run.getName(), 255));
+        build.setBranch(truncate(run.getHeadBranch(), 255));
+        build.setHtmlUrl(truncate(run.getHtmlUrl(), 500));
+        if (run.getHeadCommit() != null) {
+            build.setCommitMessage(truncate(firstLine(run.getHeadCommit().getMessage()), 1000));
+            if (run.getHeadCommit().getAuthor() != null) {
+                build.setAuthorName(truncate(run.getHeadCommit().getAuthor().getName(), 255));
+            }
+        }
+    }
+
+    private LocalDateTime completedAt(WorkflowRun run) {
+        boolean finished = "completed".equals(run.getStatus()) && !"action_required".equals(run.getConclusion());
+        return finished ? run.getUpdatedAt() : null;
+    }
+
+    private static String firstLine(String value) {
+        if (value == null) {
+            return null;
+        }
+        int newline = value.indexOf('\n');
+        return newline >= 0 ? value.substring(0, newline) : value;
+    }
+
+    private static String truncate(String value, int maxLength) {
+        return value != null && value.length() > maxLength ? value.substring(0, maxLength) : value;
     }
 
     /**
@@ -187,16 +233,20 @@ public class GitHubActionsService {
     /**
      * Map GitHub status to Build status
      */
-    private Build.BuildStatus mapGitHubStatusToBuildStatus(String status, String conclusion) {
-        if ("queued".equals(status)) {
+    Build.BuildStatus mapGitHubStatusToBuildStatus(String status, String conclusion) {
+        if ("queued".equals(status) || "waiting".equals(status)
+                || "requested".equals(status) || "pending".equals(status)) {
             return Build.BuildStatus.PENDING;
         } else if ("in_progress".equals(status)) {
             return Build.BuildStatus.IN_PROGRESS;
         } else if ("completed".equals(status)) {
-            if ("success".equals(conclusion)) {
+            if ("success".equals(conclusion) || "neutral".equals(conclusion)) {
                 return Build.BuildStatus.SUCCESS;
-            } else if ("cancelled".equals(conclusion)) {
+            } else if ("cancelled".equals(conclusion) || "skipped".equals(conclusion)) {
                 return Build.BuildStatus.CANCELLED;
+            } else if ("action_required".equals(conclusion)) {
+                // e.g. a fork PR waiting for a maintainer to approve the run; it never executed
+                return Build.BuildStatus.PENDING;
             } else {
                 return Build.BuildStatus.FAILED;
             }

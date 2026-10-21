@@ -9,7 +9,12 @@ import org.springframework.context.annotation.Configuration;
 @Data
 public class GitHubApiConfig {
 
-    private String baseUrl;
+    private String baseUrl = "https://api.github.com";
     private String token;
-    private Integer timeout;
+    private Integer timeout = 10000;
+
+    /** True when a usable token is configured (not blank and not the example placeholder). */
+    public boolean hasToken() {
+        return token != null && !token.isBlank() && !token.startsWith("your_");
+    }
 }

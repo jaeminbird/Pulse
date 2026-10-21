@@ -8,9 +8,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
+
+import java.net.URI;
 
 @Service
 @RequiredArgsConstructor
@@ -54,7 +57,7 @@ public class GitHubApiClient {
             HttpEntity<String> entity = new HttpEntity<>(headers);
 
             ResponseEntity<WorkflowRunsResponse> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     HttpMethod.GET,
                     entity,
                     WorkflowRunsResponse.class
@@ -67,7 +70,7 @@ public class GitHubApiClient {
                 throw new GitHubApiException("Unexpected response from GitHub API", response.getStatusCode().value());
             }
 
-        } catch (HttpClientErrorException e) {
+        } catch (HttpStatusCodeException e) {
             log.error("GitHub API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
             throw new GitHubApiException(
                     "Failed to fetch workflow runs: " + e.getMessage(),
@@ -90,8 +93,11 @@ public class GitHubApiClient {
      * @throws GitHubApiException if API call fails
      */
     public com.peraton.cicd.dto.github.WorkflowRun getWorkflowRun(String owner, String repo, Long runId) {
-        String url = String.format("%s/repos/%s/%s/actions/runs/%d",
-                gitHubApiConfig.getBaseUrl(), owner, repo, runId);
+        String url = UriComponentsBuilder.fromHttpUrl(gitHubApiConfig.getBaseUrl())
+                .path("/repos/{owner}/{repo}/actions/runs/{runId}")
+                .buildAndExpand(owner, repo, runId)
+                .encode()
+                .toUriString();
 
         log.debug("Fetching workflow run {} from GitHub API", runId);
 
@@ -100,7 +106,7 @@ public class GitHubApiClient {
             HttpEntity<String> entity = new HttpEntity<>(headers);
 
             ResponseEntity<com.peraton.cicd.dto.github.WorkflowRun> response = restTemplate.exchange(
-                    url,
+                    URI.create(url),
                     HttpMethod.GET,
                     entity,
                     com.peraton.cicd.dto.github.WorkflowRun.class
@@ -113,7 +119,7 @@ public class GitHubApiClient {
                 throw new GitHubApiException("Unexpected response from GitHub API", response.getStatusCode().value());
             }
 
-        } catch (HttpClientErrorException e) {
+        } catch (HttpStatusCodeException e) {
             log.error("GitHub API error: {} - {}", e.getStatusCode(), e.getResponseBodyAsString());
             throw new GitHubApiException(
                     "Failed to fetch workflow run: " + e.getMessage(),
@@ -127,34 +133,29 @@ public class GitHubApiClient {
     }
 
     private String buildWorkflowRunsUrl(String owner, String repo, String branch, String status, Integer perPage) {
-        StringBuilder url = new StringBuilder(String.format(
-                "%s/repos/%s/%s/actions/runs",
-                gitHubApiConfig.getBaseUrl(), owner, repo
-        ));
-
-        boolean hasParams = false;
+        UriComponentsBuilder url = UriComponentsBuilder.fromHttpUrl(gitHubApiConfig.getBaseUrl())
+                .path("/repos/{owner}/{repo}/actions/runs");
 
         if (branch != null && !branch.isEmpty()) {
-            url.append("?branch=").append(branch);
-            hasParams = true;
+            url.queryParam("branch", branch);
         }
-
         if (status != null && !status.isEmpty()) {
-            url.append(hasParams ? "&" : "?").append("status=").append(status);
-            hasParams = true;
+            url.queryParam("status", status);
         }
-
         if (perPage != null && perPage > 0) {
-            url.append(hasParams ? "&" : "?").append("per_page=").append(Math.min(perPage, 100));
+            url.queryParam("per_page", Math.min(perPage, 100));
         }
 
-        return url.toString();
+        return url.buildAndExpand(owner, repo).encode().toUriString();
     }
 
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + gitHubApiConfig.getToken());
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        // Public repositories work without a token (at a lower rate limit), so only
+        // send credentials when a real token has been configured.
+        if (gitHubApiConfig.hasToken()) {
+            headers.setBearerAuth(gitHubApiConfig.getToken());
+        }
         return headers;
     }
 }

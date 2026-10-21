@@ -1,0 +1,6 @@
+target
+frontend
+.git
+logs
+.env
+*.md

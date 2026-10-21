@@ -1,83 +1,49 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
+  # PostgreSQL Database (schema is created by Flyway when the app starts)
   postgres:
-    image: postgres:15-alpine
-    container_name: cicd-dashboard-db
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB: cicd_dashboard
-      POSTGRES_USER: postgres
+      POSTGRES_USER: ${DB_USERNAME:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - cicd-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Spring Boot Application
+  # Spring Boot API
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: cicd-dashboard-app
+    build: .
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      # Database Configuration
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cicd_dashboard
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-postgres}
-
-      # JPA Configuration
-      SPRING_JPA_HIBERNATE_DDL_AUTO: update
-      SPRING_JPA_SHOW_SQL: "false"
-
-      # GitHub API Configuration
-      GITHUB_TOKEN: ${GITHUB_TOKEN:-your_github_personal_access_token_here}
-      GITHUB_API_BASE_URL: https://api.github.com
-      GITHUB_API_TIMEOUT: 10000
-
-      # Scheduler Configuration
+      SPRING_PROFILES_ACTIVE: docker
+      DB_HOST: postgres
+      DB_USERNAME: ${DB_USERNAME:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      # Optional for public repositories, required for private ones
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
       SCHEDULER_GITHUB_SYNC_RATE: ${SCHEDULER_GITHUB_SYNC_RATE:-300000}
-
-      # Server Configuration
-      SERVER_PORT: 8080
-
-      # Logging
-      LOGGING_LEVEL_COM_PERATON_CICD: ${LOG_LEVEL:-INFO}
-
-      # Spring Profile
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-docker}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8080:8080"
-    networks:
-      - cicd-network
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-    volumes:
-      - ./logs:/app/logs
 
-networks:
-  cicd-network:
-    driver: bridge
+  # Angular dashboard served by nginx, which proxies /api to the app
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-4200}:80"
 
 volumes:
   postgres_data:
-    driver: local

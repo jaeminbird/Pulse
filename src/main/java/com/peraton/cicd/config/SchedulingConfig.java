@@ -13,7 +13,7 @@ import java.util.List;
 public class SchedulingConfig {
 
     private boolean enabled = true;
-    private String githubSyncCron = "0 */5 * * * *"; // Every 5 minutes
+    private long githubSyncRate = 300000; // Milliseconds between syncs (5 minutes)
     private List<MonitoredRepository> repositories = new ArrayList<>();
 
     @Data
